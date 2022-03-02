@@ -1,7 +1,3 @@
-# detach('package:MadingleyRewilding', unload=TRUE)
-# remove.packages('MadingleyRewilding')
-# rm(list=ls())
-
 library(raster)
 library(ggplot2)
 library(ggpubr)
