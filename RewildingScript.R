@@ -1,28 +1,13 @@
-library(raster)
-library(ggplot2)
-library(ggpubr)
-library(plyr)
-# No library(MadingleyRewilding) is needed, all function calls are with MadingleyRewilding::madingley_run()
-# This is done to avoid the mix up with function of the default MadingleyR package
+library(MadingleyRewilding) # load to run the altered version of the package
+library(MadingleyR) # load to make plots at the end of simulation
+library(raster) # for spatial inputs
+library(dplyr) # for data manipulation
 
-# source functions
-source('https://raw.githubusercontent.com/SHoeks/MadingleyR_0.5degree_inputs/master/DownloadLoadHalfDegreeInputs.R')
-source("https://raw.githubusercontent.com/SHoeks/RandomMadingleyRFunctions/master/SetSingleValueForAllRasters.R")
-source('https://raw.githubusercontent.com/SHoeks/RandomMadingleyRFunctions/master/createSingleCohort.R')
-source('https://raw.githubusercontent.com/SHoeks/RandomMadingleyRFunctions/master/plotBinnedTimelines_v4.R')
-source('https://raw.githubusercontent.com/SHoeks/RandomMadingleyRFunctions/master/BinnedTimeLinesFunctions.R')
-source('https://raw.githubusercontent.com/SHoeks/RandomMadingleyRFunctions/master/FW_abs.r')
-source("https://raw.githubusercontent.com/SHoeks/RandomMadingleyRFunctions/master/get_binned_fw_data_abs4.R")
-source('https://raw.githubusercontent.com/SHoeks/RandomMadingleyRFunctions/master/crop_spatial_rasters_to_window.r')
-source("https://raw.githubusercontent.com/SHoeks/RandomMadingleyRFunctions/master/plot_combined_timelines7.R")
-
-# Please reset the baseDIR path to yours
+# Please reset the baseDIR path to a folder of your choice
 baseDir="/Users/osx/Desktop/"
 envDIR=paste0(baseDir,'/env/')
 outDIR=paste0(baseDir,'/out_','_',format(Sys.time(), "%Y_%m_%d_%H_%M"),'/')
 outDIRtemp=paste0(baseDir,'/tempdir_',sample(1000000:8000000,1),'/')
-
-# Make dirs 
 dir.create(envDIR)
 dir.create(outDIR)
 dir.create(outDIRtemp)
@@ -33,22 +18,14 @@ coords_HL=cbind(35, 42) # High NPP, Low seasonilty
 coords_LH=cbind(16, 69) # Low NPP, High seasonilty
 coords_HH=cbind(32, 60) # High NPP, High seasonilty
 select_location = coords_HL # select the desired location here
+spatial_window = c(select_location[1],select_location[1]+3,select_location[2],select_location[2]+3) # Set spatial window
 Years_SpinUp=50 #1000 #SpinUp
 Years_PostRemoval=50 #500 #Stabilisation post removal 1
 Years_PostReintroduction1=10 #50 #Stabilisation post reintroduction 1 (herbivores and omnivores)
 Years_PostReintroduction2=50 #500 #Stabilisation post reintroduction 2 (carnivores)
-BMinit_H=700*1000 # max mass herbivores (g) (Bison)
-BMinit_O=200*1000 # max mass omnivores (g) (Bear)
-BMinit_C=50*1000  # max mass carnivores (g) (Wolf)
-BMafterRemoval_H=200*1000
-BMafterRemoval_O=100*1000
-BMafterRemoval_C=10*1000
-BMinit_H_ect=1.5*1000 # max mass herbivores (g) (tortoise)
-BMinit_O_ect=0.2*1000 # max mass omnivores (g) (lizard)
-BMinit_C_ect=10*1000  # max mass carnivores (g) (big snake)
-BMinit_H_ect_sem=0.02*1000 # max mass herbivores (g) (insects)
-BMinit_O_ect_sem=0.02*1000 # max mass omnivores (g) (insects)
-BMinit_C_ect_sem=0.02*1000  # max mass carnivores (g) (insects)
+BMafterRemoval_H=200*1000 # max mass herbivores after removal (g) (Bison)
+BMafterRemoval_O=100*1000 # max mass omnivores after removal (g) (Bear)
+BMafterRemoval_C=10*1000  # max mass carnivores after removal (g) (Wolf)
 mxch=500 #700 #max cohort number
 SampRemoved=2 # cohorts to remove per functional group per grid cell per year 
 nAnimalsToReintroduce=10 #n animals to introduce per functional group
@@ -58,39 +35,28 @@ MinPreyDensThresh= 0.15 # 0.15 #body mass threshold below which MinPreyDensityPe
 
 # Downloads and imports the 0.5 degree inputs from a zip into the selected dir
 # Skips download if files already exist in selected dir
-sp_inputs<-DownloadLoadHalfDegreeInputs(envDIR)
+# After downloading, rasters get cropped to spatial window 
+# This helps to increase loading times of the spatial rasters during the model runs
+sp_inputs = DownloadLoadHalfDegreeInputs(envDIR) %>% 
+  CropSpatialRastersToWindow(spatial_window) %>% 
+  SetSingleValueForAllRasters(select_location)
 
-# Set spatial window
-spatial_window = c(select_location[1],select_location[1]+3,select_location[2],select_location[2]+3) 
+# Get Rewilding Europe specific cohort definitions
+chrt_def = GetRewildingEuropeCohortDefs()
 
-# Crop rasters, this helps to increase loading times of the spatial rasters during the model runs
-sp_inputs = crop_spatial_rasters_to_window(sp_inputs, spatial_window)
-
-# Set single value for select_location to entire raster
-sp_inputs = SetSingleValueForAllRasters(sp_inputs,select_location)
-
-# Get default (non-spatial) model params
-chrt_def = MadingleyRewilding::madingley_inputs('cohort definition')
-stck_def = MadingleyRewilding::madingley_inputs('stock definition')
-mdl_prms = MadingleyRewilding::madingley_inputs('model parameters')
-
-# Set max body masses
-chrt_def$PROPERTY_Maximum.mass<-c(BMinit_H, BMinit_C, BMinit_O, 
-                                  BMinit_H_ect_sem, BMinit_C_ect_sem, BMinit_O_ect_sem, 
-                                  BMinit_H_ect, BMinit_C_ect, BMinit_O_ect)
-sp_inputs$Endo_H_max[] = BMinit_H
-sp_inputs$Endo_O_max[] = BMinit_O
-sp_inputs$Endo_C_max[] = BMinit_C
-
-# Create list that holds all the Madingley output data
-mdata = list()
+# Get other default (non-spatial) model params
+stck_def = MadingleyInputs('stock definition')
+mdl_prms = MadingleyInputs('model parameters')
 
 ###################################
 ###### INITIALISATION PHASE #######
 ###################################
 
+# Create list that holds all the Madingley output data
+mdata = list()
+
 # Initialize the Madingley model
-init = MadingleyRewilding::madingley_init( 
+init = MadingleyInit( 
   cohort_def=chrt_def, 
   stock_def=stck_def, 
   spatial_inputs=sp_inputs, 
@@ -100,7 +66,7 @@ init = MadingleyRewilding::madingley_init(
 # Run spin-up model
 years = Years_SpinUp
 export = years - 5
-mdata$spinup = MadingleyRewilding::madingley_run( 
+mdata$spinup = MadingleyRun( 
   madingley_data = init,
   cohort_def=chrt_def, 
   stock_def=stck_def, 
@@ -127,13 +93,12 @@ mdl_prms[51,2]<-1
 
 # Create data needed for removal phase
 mdata_tmp = mdata$spinup
-CelInd<-unique(mdata_tmp$cohorts$GridcellIndex) #id cells to loop on
-minBM<-min(BMafterRemoval_H, BMafterRemoval_C, BMafterRemoval_O) #min body mass among H, C and O to remove
+CelInd = unique(mdata_tmp$cohorts$GridcellIndex) #id cells to loop over
 
 # Set max body mass
 sp_inputs$Endo_H_max[] = BMafterRemoval_H
-sp_inputs$Endo_O_max[] = BMafterRemoval_O
 sp_inputs$Endo_C_max[] = BMafterRemoval_C
+sp_inputs$Endo_O_max[] = BMafterRemoval_O
 H_Cohorts_to_remove<-mdata_tmp$cohorts[mdata_tmp$cohorts$FunctionalGroupIndex==0 & mdata_tmp$cohorts$AdultMass>BMafterRemoval_H,]
 C_Cohorts_to_remove<-mdata_tmp$cohorts[mdata_tmp$cohorts$FunctionalGroupIndex==1 & mdata_tmp$cohorts$AdultMass>BMafterRemoval_C,]
 O_Cohorts_to_remove<-mdata_tmp$cohorts[mdata_tmp$cohorts$FunctionalGroupIndex==2 & mdata_tmp$cohorts$AdultMass>BMafterRemoval_O,]
@@ -196,7 +161,7 @@ repeat {
   years=1
   
   # run the model with removed cohorts for 1 year
-  mdata[[tracker+1]] = MadingleyRewilding::madingley_run(
+  mdata[[tracker+1]] = MadingleyRun(
     cohort_def=chrt_def,
     stock_def=stck_def,
     spatial_inputs=sp_inputs, 
@@ -217,7 +182,7 @@ repeat {
 }
 
 # Run another year and save the output
-mdata[[length(mdata)+1]] = MadingleyRewilding::madingley_run( 
+mdata[[length(mdata)+1]] = MadingleyRun( 
   madingley_data = mdata[[length(mdata)]],
   cohort_def=chrt_def, 
   stock_def=stck_def,
@@ -238,7 +203,7 @@ mdata[[length(mdata)+1]] = MadingleyRewilding::madingley_run(
 
 years = Years_PostRemoval
 export = years - 5
-mdata$post_removal = MadingleyRewilding::madingley_run( 
+mdata$post_removal = MadingleyRun( 
   madingley_data = mdata[[length(mdata)]],
   cohort_def=chrt_def, stock_def=stck_def,
   spatial_inputs=sp_inputs, 
@@ -257,30 +222,14 @@ mdata$post_removal = MadingleyRewilding::madingley_run(
 ###### REINTRODUCTION PHASE #######
 ###################################
 
-#REINTRODUCE HERBIVORES AND OMNIVORES and also carnivores? bad idea to reintroduce them later??!
-Cohorts_to_reintroduce<-rbind(H_Cohorts_to_remove, O_Cohorts_to_remove, C_Cohorts_to_remove)
-
-#reduce n of cohorts to reintroduce by aggregating by adult body mass, gridcell and functional group
-HeaderOrder<-names(Cohorts_to_reintroduce)
-Cohorts_to_reintroduce$AdultMass2<-round(Cohorts_to_reintroduce$AdultMass/1000)*1000
-Cohorts_to_reintroduce<-aggregate(. ~ GridcellIndex + FunctionalGroupIndex + AdultMass2, FUN=mean, data=Cohorts_to_reintroduce)
-Cohorts_to_reintroduce<-Cohorts_to_reintroduce[,HeaderOrder]
-Cohorts_to_reintroduce$AdultMass2 = NULL
-
-# change Cohorts_to_reintroduce properties
-head(Cohorts_to_reintroduce)
-Cohorts_to_reintroduce$IndividualReproductivePotentialMass = 0
-Cohorts_to_reintroduce$MaturityTimeStep = 0
-Cohorts_to_reintroduce$IsAdult = 0
-Cohorts_to_reintroduce$AgeMonths = 0 
-Cohorts_to_reintroduce$TimeStepsJuviline = 0
-Cohorts_to_reintroduce$TimeStepsAdult = 0
-Cohorts_to_reintroduce$IndividualBodyMass = (Cohorts_to_reintroduce$JuvenileMass + Cohorts_to_reintroduce$AdultMass) / 2
-Cohorts_to_reintroduce$CohortAbundance = nAnimalsToReintroduce
+# Get cohort properties to reintroduce
+# This function reduces the number of cohorts to reintroduce
+# It does so by aggregating by adult body mass, gridcell and functional group
+GetCohortsToReintroduce(rbind(H_Cohorts_to_remove, O_Cohorts_to_remove, C_Cohorts_to_remove))
 
 # set the maximum allowed body masses 
-sp_inputs$Endo_H_max[] = BMinit_H
-sp_inputs$Endo_O_max[] = BMinit_O
+#sp_inputs$Endo_H_max[] = chrt_def$PROPERTY_Maximum.mass[chrt_def$NOTES_group.description=="Bison"]
+#sp_inputs$Endo_O_max[] = chrt_def$PROPERTY_Maximum.mass[chrt_def$NOTES_group.description=="Bear"]
 
 # split and sort by adult bm
 H_Cohorts_to_reintro = subset(Cohorts_to_reintroduce, FunctionalGroupIndex==0)
@@ -336,7 +285,7 @@ repeat{
   
     # run the model with reintroduced cohorts for 1 year
     print("running model for 1 year")
-    mdata[[length(mdata) + 1]] = MadingleyRewilding::madingley_run(
+    mdata[[length(mdata) + 1]] = MadingleyRun(
       madingley_data = mdata[[length(mdata)]],
       cohort_def=chrt_def, 
       stock_def=stck_def, 
@@ -354,7 +303,7 @@ repeat{
 # Stabilize before reintroducing carnivores
 years=Years_PostReintroduction1
 export=years-1
-mdata$betweenReintroductionPhase = MadingleyRewilding::madingley_run(
+mdata$betweenReintroductionPhase = MadingleyRun(
     madingley_data = mdata[[length(mdata)]],
     cohort_def=chrt_def, stock_def=stck_def,
     spatial_inputs=sp_inputs,
@@ -400,7 +349,7 @@ repeat{
         
         # Run the model with reintroduced cohorts for 1 year
         print("running model for 1 year")
-        mdata[[length(mdata)+1]] = MadingleyRewilding::madingley_run(
+        mdata[[length(mdata)+1]] = MadingleyRun(
             madingley_data = mdata[[length(mdata)]],
             cohort_def=chrt_def, stock_def=stck_def, spatial_inputs=sp_inputs,
             threshold_prey_density_per_hectare=MnPreyDens, 
@@ -417,7 +366,7 @@ repeat{
 # Stabilize after carnivore reintroduction
 years=Years_PostReintroduction2
 export=years-5
-mdata$post_reintroduction = MadingleyRewilding::madingley_run(
+mdata$post_reintroduction = MadingleyRun(
   madingley_data = mdata[[length(mdata)]],
   cohort_def=chrt_def, stock_def=stck_def, 
   spatial_inputs=sp_inputs, 
@@ -437,10 +386,10 @@ system(paste0('rm -rf ',outDIRtemp,'*'))
 
 # Plot entire timeline
 par(mfrow=c(1,1))
-plot_combined_timelines(mdata, legend_ypos = 6, legend_xpos = 0)
+PlotCombinedTimelines(mdata, legend_ypos = 6, legend_xpos = 0)
 
 # Compare food-web between initial state and post reintroduction
-MadingleyR::plot_foodweb(mdata$spinup)
-MadingleyR::plot_foodweb(mdata$post_reintroduction)
+plot_foodweb(mdata$spinup)
+plot_foodweb(mdata$post_reintroduction)
 
 
