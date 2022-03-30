@@ -89,9 +89,9 @@ DownloadLoadHalfDegreeInputs = function(wd)
   input$Ecto_max[] = 50000
 
   # Set max body masses
-  sp_inputs$Endo_H_max[] = 700000
-  sp_inputs$Endo_O_max[] = 200000
-  sp_inputs$Endo_C_max[] = 50000
+  input$Endo_H_max[] = 700000
+  input$Endo_O_max[] = 200000
+  input$Endo_C_max[] = 50000
 
   return(input)
 

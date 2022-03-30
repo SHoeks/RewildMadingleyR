@@ -2,7 +2,7 @@
 SetSingleValueForAllRasters = function(sp_inputs_crop,select_location){
 
   sp_input_select_values = list()
-  for(i in 1:length(sp_inputs)) {
+  for(i in 1:length(sp_inputs_crop)) {
     
     # get value at select_location
     sp_input_select_values[[i]] = extract(sp_inputs_crop[[i]],select_location)
