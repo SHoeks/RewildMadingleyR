@@ -14,7 +14,7 @@ Installing the package into your R library can be done using the following code.
 
 ``` r
 # Download the zip from this repository
-# link: https://anonymous.4open.science/api/repo/RewildMadingleyR/file/Rewild-MadingleyR.zip
+# link: https://anonymous.4open.science/api/repo/RewildMadingleyR-FCC9/file/Rewild-MadingleyR.zip
 
 # Install package from the local zip using devtools
 devtools::install_local("MadingleyRewilding-main.zip")
