@@ -18,7 +18,7 @@ dir.create(outDIRtemp)
 
 # Simulation settings
 coords_LL <- cbind(-5, 40) # Low NPP, Low seasonilty
-coords_HL <- cbind(35, 42) # High NPP, Low seasonilty
+coords_HL <- cbind(4, 45) # High NPP, Low seasonilty
 coords_LH <- cbind(16, 69) # Low NPP, High seasonilty
 coords_HH <- cbind(32, 60) # High NPP, High seasonilty
 select_location <- coords_HL # select the desired location here
