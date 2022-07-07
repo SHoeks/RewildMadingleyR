@@ -59,6 +59,7 @@ library(MadingleyRewilding) # load to run the altered version of the package
 library(MadingleyR) # load to make plots at the end of simulation
 library(raster) # for spatial inputs
 library(dplyr) # for data manipulation
+library(mFD) # for Jaccard index calculations
 ```
 #### Load inputs and define parameters 
 
@@ -506,6 +507,91 @@ plot_foodweb(mdata$spinup)
 plot_foodweb(mdata$post_reintroduction)
 ```
 
+#### Calculate Jaccard indices (Beta diversity)
 
+The example below calculates the trait-based community dissimilarity using the Jaccard index, comparing the initial state to the post-reintroduction state. For the paper Jaccard indices were average across multiple sampling iterations as well as across multiple simulation replicates. In addition, for the paper the values represent the Jaccard beta diversity indices for the last 5 simulation years, this example only shows how to compute the indices for the last simulation month. These functions also quantify the nestedness and turnover.
+
+```r
+# get FD data
+FDdata <- list()
+FDdata[[1]] <- mdata$spinup$cohorts
+FDdata[[1]]$Phase <- "init"
+FDdata[[2]] <- mdata$post_reintroduction$cohorts
+FDdata[[2]]$Phase <- "p_rein"
+FDdata <- rbind(FDdata[[1]],FDdata[[2]])
+FDdata$FunctionalGroupIndex <- as.factor(as.character(FDdata$FunctionalGroupIndex))
+FDdata$TrophicIndex <- round(FDdata$TrophicIndex,2)
+FDdata$Log10AdultMass <- round(log10(FDdata$AdultMass),2)
+FDdata <- FDdata[,c("FunctionalGroupIndex","TrophicIndex","Log10AdultMass","Phase")]
+
+# reduce size data
+samplesize <- 5000
+FDdata <- FDdata[sample(1:nrow(FDdata),samplesize),]
+
+# convert data
+FDdata$ID <- paste0(FDdata$TrophicIndex,"_",FDdata$Log10AdultMass,"_",FDdata$FunctionalGroupIndex)
+FDdata$init <- 0
+FDdata$init[FDdata$Phase=="init"] <- 1
+FDdata$p_rein <- 0
+FDdata$p_rein[FDdata$Phase=="p_rein"] <- 1
+
+# sp data 
+sp_tr <- FDdata[!duplicated(FDdata$ID),]
+rownames(sp_tr) <- sp_tr$ID
+sp_tr <- sp_tr[,c("Log10AdultMass","TrophicIndex","FunctionalGroupIndex")]
+
+# site occurance data (simply 0 and 1)
+asb_sp_w <- FDdata[,c("ID","init","p_rein")]
+asb_sp_w1 <- aggregate(init~ID,asb_sp_w,sum)
+asb_sp_w2 <- aggregate(p_rein~ID,asb_sp_w,sum)
+asb_sp_w <- cbind(asb_sp_w1,asb_sp_w2$p_rein[match(asb_sp_w1$ID,asb_sp_w2$ID)])
+colnames(asb_sp_w) <- c("ID","init","p_rein")
+rownames(asb_sp_w) <- asb_sp_w$ID
+asb_sp_w$ID <- NULL
+asb_sp_w <- t(asb_sp_w)
+
+# this is the global dataset
+traits_cat <- data.frame(trait_name = c("Log10AdultMass","TrophicIndex","FunctionalGroupIndex"),
+                         trait_type = c("Q","Q","N"))
+traits_cat$trait_name <- as.character(traits_cat$trait_name)
+traits_cat$trait_type <- as.character(traits_cat$trait_type)
+
+# sp absenses / presences summary
+asb_sp_summ <- asb.sp.summary(asb_sp_w = asb_sp_w)
+asb_sp_occ <- asb_sp_summ$"asb_sp_occ"
+
+# compute functional distances
+sp_dist <- funct.dist(
+  sp_tr         = sp_tr,
+  tr_cat        = traits_cat,
+  metric        = "gower",
+  scale_euclid  = "scale_center",
+  ordinal_var   = "classic",
+  weight_type   = "equal",
+  stop_if_NA    = TRUE)
+
+fspaces_quality <- quality.fspaces(
+  sp_dist             = sp_dist,
+  maxdim_pcoa         = 3,
+  deviation_weighting = "absolute",
+  fdist_scaling       = FALSE,
+  fdendro             = "average")
+
+round(fspaces_quality$"quality_fspaces", 3)
+sp_faxes_coord <- fspaces_quality$"details_fspaces"$"sp_pc_coord"
+
+# beta diversity - use all traits that were originally included
+beta_fd_indices <- beta.fd.multidim(
+      sp_faxes_coord   = sp_faxes_coord[ , c("PC1", "PC2", "PC3")],
+      asb_sp_occ       = asb_sp_occ,
+      check_input      = TRUE,
+      beta_family      = c("Jaccard"),
+      details_returned = TRUE)
+
+# print results Jaccard index results
+print(beta_fd_indices[[1]]$jac_diss)
+print(beta_fd_indices[[1]]$jac_nest)
+print(beta_fd_indices[[1]]$jac_turn)
+```
 
 

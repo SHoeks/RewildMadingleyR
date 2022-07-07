@@ -83,7 +83,7 @@ mdata$spinup <- MadingleyRun(
   max_cohort = mxch, 
   output_timestep = c(0,export,export,export),
   model_parameters = mdl_prms,
-  silenced=FALSE, parallel = TRUE,
+  silenced=FALSE, parallel = FALSE,
   cohort_output_bins = outbins,
   n_autotroph_bins = 4
 ) 
